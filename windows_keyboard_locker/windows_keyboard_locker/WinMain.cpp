@@ -1,9 +1,5 @@
 #define _WIN32_IE 0x0500
-
-#define NOTI_LOCKED        L"¼üÅÌÒÑËø¶¨"
-#define NOTI_UNLOCKED      L"¼üÅÌÒÑ½âËø"
-#define NOTI_LOCK_FAILED   L"¼üÅÌËø¶¨Ê§°Ü"
-#define NOTI_UNLOCK_FAILED L"¼üÅÌ½âËøÊ§°Ü"
+#define WM_TASKBAR_CREATED RegisterWindowMessage(TEXT("TaskbarCreated"))
 
 #include <Windows.h>
 #include <string>
@@ -12,44 +8,42 @@
 using namespace std;
 enum
 {
-	WM_TRAYICON = WM_USER + 100, //×Ô¶¨ÒåÍĞÅÌÏûÏ¢
+	WM_TRAYICON = WM_USER + 100, //è‡ªå®šä¹‰æ‰˜ç›˜æ¶ˆæ¯
 	ID_LOCK,
 	ID_UNLOCK,
 	ID_EXIT
 };
 
-
-HHOOK KBhook = NULL;//¹³×Ó¾ä±ú
+HHOOK KBhook = NULL;//é’©å­å¥æŸ„
 HINSTANCE hInst;
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam);//¼üÅÌ¹³×Ó»Øµ÷º¯Êı
+LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam);//é”®ç›˜é’©å­å›è°ƒå‡½æ•°
 
-void TrayMessage(HWND hwnd, int nFlag);//ÏÔÊ¾ÍĞÅÌÆøÅİĞÅÏ¢
-void DestroyTrayIcon(HWND hwnd);//É¾³ıÍĞÅÌÍ¼±ê
-void CreateTrayMenu(HWND hwnd);//½¨Á¢ÍĞÅÌ²Ëµ¥
-BOOL isValidMessage(WORD message);          //ÑéÖ¤ĞÅÏ¢µÄºÏ·¨ĞÔ
-
-/*void PopUpMenu(ClipBoard clipboard, POINT point);   */      //µ¯³öÑ¡Ôñ²Ëµ¥
+void TrayMessage(HWND hwnd, int nFlag);//æ˜¾ç¤ºæ‰˜ç›˜æ°”æ³¡ä¿¡æ¯
+void DestroyTrayIcon(HWND hwnd);//åˆ é™¤æ‰˜ç›˜å›¾æ ‡
+void CreateTrayMenu(HWND hwnd);//å»ºç«‹æ‰˜ç›˜èœå•
+BOOL isValidMessage(WORD message);          //éªŒè¯ä¿¡æ¯çš„åˆæ³•æ€§
+/*void PopUpMenu(ClipBoard clipboard, POINT point);   */      //å¼¹å‡ºé€‰æ‹©èœå•
 VOID APIENTRY DisplayContextMenu(HWND hwnd, POINT pt);
+BOOL isLocked = false; //å½“å‰æ˜¯å¦æ˜¯é”å®šçŠ¶æ€
 
-int EnableKeyboardCapture();//¼¤»î¼üÅÌ¹³×Ó
-int DisableKeyboardCapture();//½â³ı¼üÅÌ¹³×Ó
-
+int EnableKeyboardCapture();//æ¿€æ´»é”®ç›˜é’©å­
+int DisableKeyboardCapture();//è§£é™¤é”®ç›˜é’©å­
 void OnLock(HWND hwnd);
 void OnUnlock(HWND hwnd);
-
+void FirstLoad(HWND hwnd);
+NOTIFYICONDATA IconData;
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine, int iCmdShow)
 {
 	HWND hwnd;
-	HICON Icon;
+	//HICON Icon;
 	MSG msg;
-	NOTIFYICONDATA IconData;
 	WNDCLASS wndclass;
-	static TCHAR szAppName[] = { L"Keyboard Lock" };
+	static TCHAR szAppName[] = { L"Keyboard Locker" };
 	hInst = hInstance;
-	//³õÊ¼»¯´°¿Ú
+	//åˆå§‹åŒ–çª—å£
 	wndclass.style = CS_HREDRAW | CS_VREDRAW;
 	wndclass.lpfnWndProc = WndProc;
 	wndclass.cbClsExtra = 0;
@@ -64,20 +58,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
 	RegisterClass(&wndclass);
 
 	hwnd = CreateWindow(szAppName, szAppName, WS_OVERLAPPEDWINDOW, 0, 0, 0, 0, 0, 0, hInstance, NULL);
-
-	//ÕâÀïÖ®ºó²»ĞèÒªÏÔÊ¾´°¿Ú£¬ĞÂ½¨ÍĞÅÌÍ¼±ê£¬²Ù×÷È«²¿ÔÚÍĞÅÌÍ¼±êÉÏÍê³É
-	//Warning: HWND ºÍ HINSTANCE ²»¶ÔµÄ»°£¬¾Í»áÓĞÎÊÌâ
+	//è¿™é‡Œä¹‹åä¸éœ€è¦æ˜¾ç¤ºçª—å£ï¼Œæ–°å»ºæ‰˜ç›˜å›¾æ ‡ï¼Œæ“ä½œå…¨éƒ¨åœ¨æ‰˜ç›˜å›¾æ ‡ä¸Šå®Œæˆ
+	//Warning: HWND å’Œ HINSTANCE ä¸å¯¹çš„è¯ï¼Œå°±ä¼šæœ‰é—®é¢˜
 	IconData.cbSize = sizeof(NOTIFYICONDATA);
 	IconData.hWnd = hwnd;
 	IconData.uID = (UINT)hInstance;
 	//IconData.hIcon = LoadIcon(0, MAKEINTRESOURCE(IDI_ICON1));
-	IconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
+	IconData.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_ICON1));
 	IconData.uFlags = NIF_MESSAGE + NIF_ICON + NIF_TIP;
 	IconData.uCallbackMessage = WM_TRAYICON;
-	StringCchCopy(IconData.szTip, ARRAYSIZE(IconData.szTip), L"µã»÷ÉèÖÃ");
-	//strcpy(IconData.szTip, "¼üÅÌËø");
-
+	StringCchCopy(IconData.szTip, ARRAYSIZE(IconData.szTip), L"å³é”®è®¾ç½®");
 	Shell_NotifyIcon(NIM_ADD, &IconData);
+	FirstLoad(hwnd
+	);
 
 	while (GetMessage(&msg, NULL, 0, 0))
 	{
@@ -96,7 +89,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_COMMAND:
 		if (HIWORD(wParam) == 0)
 		{
-			//²Ëµ¥¶¯×÷µÄÏûÏ¢
+			//èœå•åŠ¨ä½œçš„æ¶ˆæ¯
 			switch (LOWORD(wParam))
 			{
 			case ID_LOCK:
@@ -117,7 +110,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_TRAYICON:
 		switch (lParam)
 		{
-		case WM_LBUTTONDOWN:
+			//case WM_LBUTTONDOWN:
+		case WM_LBUTTONDBLCLK:
+		case WM_RBUTTONDOWN:
+			SetForegroundWindow(hwnd);//åŠ äº†è¿™ä¸ªåå¯ä»¥ä½¿å¾—é¼ æ ‡åœ¨ç‚¹å‡»åˆ«çš„åŒºåŸŸé€‰æ¡†æ¶ˆå¤±
 			CreateTrayMenu(hwnd);
 			break;
 		}
@@ -128,14 +124,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		PostQuitMessage(0);
 		break;
 	}
-
+	if (message == WM_TASKBAR_CREATED)
+	{
+		//ç³»ç»ŸExplorerå´©æºƒé‡å¯æ—¶ï¼Œé‡æ–°åŠ è½½æ‰˜ç›˜
+		Shell_NotifyIcon(NIM_ADD, &IconData);
+	}
 	return DefWindowProc(hwnd, message, wParam, lParam);
 }
 
 
 LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
-	//ÊÇ¼üÅÌµÄ¶¯×÷È«²¿ºöÂÔ
+	//æ˜¯é”®ç›˜çš„åŠ¨ä½œå…¨éƒ¨å¿½ç•¥
 	if (nCode == HC_ACTION)
 	{
 		return 1;
@@ -149,65 +149,54 @@ BOOL isValidMessage(WORD message)
 	return TRUE;
 }
 
-string copyToCustomeClipBoard()
-{
-	char * buffer = NULL;
-	//´ò¿ª¼ôÌù°å
-	string fromClipboard;
-	if (OpenClipboard(NULL))
-	{
-		HANDLE hData = GetClipboardData(CF_TEXT);
-		char * buffer = (char*)GlobalLock(hData);
-		fromClipboard = buffer;
-		GlobalUnlock(hData);
-		CloseClipboard();
-
-	}
-
-	return fromClipboard;
-}
-
-
 
 //the function to display shortcut menu
+/*
+
 VOID APIENTRY DisplayContextMenu(HWND hwnd, POINT pt)
 {
-	HMENU hmenu;            // top-level menu 
-	HMENU hmenuTrackPopup;  // shortcut menu 
+	HMENU hmenu;            // top-level menu
+	HMENU hmenuTrackPopup;  // shortcut menu
 
-	// Load the menu resource. 
+	// Load the menu resource.
 
 	if ((hmenu = LoadMenu(NULL, L"ShortcutExample")) == NULL)
 		return;
 
-	// TrackPopupMenu cannot display the menu bar so get 
-	// a handle to the first shortcut menu. 
+	// TrackPopupMenu cannot display the menu bar so get
+	// a handle to the first shortcut menu.
 
 	hmenuTrackPopup = GetSubMenu(hmenu, 0);
 
-	// Display the shortcut menu. Track the right mouse 
-	// button. 
+	// Display the shortcut menu. Track the right mouse
+	// button.
 
 	TrackPopupMenu(hmenuTrackPopup,
 		TPM_LEFTALIGN | TPM_RIGHTBUTTON,
 		pt.x, pt.y, 0, hwnd, NULL);
 
-	// Destroy the menu. 
+	// Destroy the menu.
 
 	DestroyMenu(hmenu);
 }
+*/
 
 int EnableKeyboardCapture()
 {
-	// 13 ±íÊ¾Ê¹ÓÃµÍ¼¶¼üÅÌ¹³×Ó£¬ºÍ WM_KEYBOARD ²»Í¬
+	isLocked = true;
+	// 13 è¡¨ç¤ºä½¿ç”¨ä½çº§é”®ç›˜é’©å­ï¼Œå’Œ WM_KEYBOARD ä¸åŒ
 	KBhook = !KBhook ? SetWindowsHookEx(13, (HOOKPROC)KeyboardHookProc, (HINSTANCE)GetModuleHandle(NULL), 0) : KBhook;
-
-	return (KBhook ? 1 : -1);
+	if (KBhook)
+	{
+		return  1;
+	}
+	else return -1;
 }
 
 
 int DisableKeyboardCapture()
 {
+	isLocked = false;
 	if (KBhook == NULL)
 	{
 		return 0;
@@ -217,53 +206,63 @@ int DisableKeyboardCapture()
 		BOOL flag;
 		flag = UnhookWindowsHookEx(KBhook);
 		KBhook = NULL;
-		return (flag ? 1 : -1);
+		if (flag)
+		{
+			return  1;
+		}
+		else return  0;
 	}
 }
-
-
-void TrayMessage(HWND hwnd, int nFlag)
+void FirstLoad(HWND hwnd)
 {
-	NOTIFYICONDATA nib = {};
-	nib.cbSize = sizeof(NOTIFYICONDATA);
-	nib.hWnd = hwnd;
-	nib.uID = (UINT)GetModuleHandle(NULL);
-	nib.uFlags = NIF_INFO | NIF_ICON;
-	nib.dwInfoFlags = NIIF_INFO;
-	nib.uTimeout = 1000;
-	nib.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_ICON1));
-	//StringCchCopy(nid.szTip, ARRAYSIZE(nid.szTip), L"Windows KeyBoard Locker");
-	//wsprintf(nid.szInfo, szText);
-	switch (nFlag)
+	NOTIFYICONDATA fstNote = {};
+	fstNote.cbSize = sizeof(NOTIFYICONDATA);
+	fstNote.uTimeout = 1000;
+	fstNote.hWnd = hwnd;
+	fstNote.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_ICON1));
+	fstNote.uID = (UINT)GetModuleHandle(NULL);
+	fstNote.uFlags = NIF_INFO | NIF_ICON | NIF_TIP;
+	lstrcpy(fstNote.szInfoTitle, L"Keyboard-Locker Î²\n");
+	lstrcpy(fstNote.szInfo, L"ç¨‹åºå·²å¯åŠ¨ï¼\nè¯·åœ¨ç³»ç»Ÿæ‰˜ç›˜é‡Œè¿›è¡Œæ“ä½œ\n");
+	Shell_NotifyIcon(NIM_MODIFY, &fstNote);
+}
+
+void TrayMessage(HWND hwnd)
+{
+	NOTIFYICONDATA MyNotice = {};
+	MyNotice.cbSize = sizeof(NOTIFYICONDATA);
+	MyNotice.hWnd = hwnd;
+	MyNotice.uID = (UINT)GetModuleHandle(NULL);
+	MyNotice.uFlags = NIF_INFO | NIF_ICON | NIF_TIP;//ä¹‹å‰æ˜¯uFlagsæ²¡æœ‰èµ‹å€¼å¯¼è‡´å¼¹ä¸å‡ºæ¥ï¼
+	MyNotice.uTimeout = 500;
+	//MyNotice.hBalloonIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_ICON1));
+	MyNotice.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_ICON1));
+	lstrcpy(MyNotice.szInfoTitle, L"Keyboard-Locker Î²\n");
+	if (isLocked)
 	{
-	case 0:
-		StringCchCopy(nib.szInfo, ARRAYSIZE(nib.szInfo), NOTI_UNLOCKED);
-		break;
-	case 1:
-		StringCchCopy(nib.szInfo, ARRAYSIZE(nib.szInfo), NOTI_LOCKED);
-		break;
-	case 2:
-		StringCchCopy(nib.szInfo, ARRAYSIZE(nib.szInfo), NOTI_UNLOCK_FAILED);
-		break;
-	case 3:
-		StringCchCopy(nib.szInfo, ARRAYSIZE(nib.szInfo), NOTI_LOCK_FAILED);
-		break;
-	default:
-		break;
+		lstrcpy(MyNotice.szInfo, L"é”®ç›˜å·²é”å®š");
 	}
-	/*strcpy(nid.szInfoTitle, (TCHAR )"¼üÅÌËø");*/
-	Shell_NotifyIcon(NIM_MODIFY, &nib);
+	else
+	{
+		lstrcpy(MyNotice.szInfo, L"é”®ç›˜å·²è§£é”");
+	}
+	Shell_NotifyIcon(NIM_MODIFY, &MyNotice);
 }
 
 
 void DestroyTrayIcon(HWND hwnd)
 {
 	NOTIFYICONDATA nid;
-	nid.cbSize = sizeof(nid);
 	nid.uID = (UINT)GetModuleHandle(NULL);
+	nid.cbSize = sizeof(nid);
+	lstrcpy(nid.szInfoTitle, L"Keyboard-Locker Î²\n");
+	lstrcpy(nid.szInfo, L"ç¨‹åºå·²é€€å‡º\n");
 	nid.hWnd = hwnd;
-	nid.uFlags = 0;
-	Shell_NotifyIcon(NIM_DELETE, &nid);
+	//nid.uTimeout = 1000;
+	nid.hIcon = LoadIcon(hInst, MAKEINTRESOURCE(IDI_ICON1));
+	nid.uFlags = NIF_INFO | NIF_ICON ;
+	Shell_NotifyIcon(NIM_MODIFY, &nid);
+	//Shell_NotifyIcon(NIM_DELETE, &nid);
 }
 
 
@@ -271,45 +270,29 @@ void CreateTrayMenu(HWND hwnd)
 {
 	HMENU hMenu;
 	hMenu = CreatePopupMenu();
-	AppendMenu(hMenu, MF_STRING, ID_LOCK, L"Ëø¶¨¼üÅÌ");
-	AppendMenu(hMenu, MF_STRING, ID_UNLOCK, L"½âËø¼üÅÌ");
+	if (isLocked)
+	{
+		AppendMenu(hMenu, MF_STRING, ID_UNLOCK, L"è§£é”é”®ç›˜");
+	}
+	else
+	{
+		AppendMenu(hMenu, MF_STRING, ID_LOCK, L"é”å®šé”®ç›˜");
+	}
 	AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-	AppendMenu(hMenu, MF_STRING, ID_EXIT, L"ÍË³ö");
-
+	AppendMenu(hMenu, MF_STRING, ID_EXIT, L"é€€å‡º");
 	POINT pt;
 	GetCursorPos(&pt);
-
 	TrackPopupMenu(hMenu, TPM_RIGHTALIGN, pt.x, pt.y, 0, hwnd, NULL);
+	//DestroyMenu(hMenu);
+
 }
-
-
 void OnUnlock(HWND hwnd)
 {
-	switch (DisableKeyboardCapture())
-	{
-	case 0:
-		TrayMessage(hwnd, 3);
-		break;
-	case 1:
-		TrayMessage(hwnd, 0);
-		break;
-	case -1:
-		TrayMessage(hwnd, 2);
-		break;
-	}
+	DisableKeyboardCapture();
+	TrayMessage(hwnd);
 }
-
-
 void OnLock(HWND hwnd)
 {
-	switch (EnableKeyboardCapture())
-	{
-	case 1:
-		TrayMessage(hwnd, 1);  //KeyBoard lock Success
-		break;
-
-	case -1:
-		TrayMessage(hwnd, 3);  //KeyBoard lock failed
-		break;
-	}
+	EnableKeyboardCapture();
+	TrayMessage(hwnd);
 }
